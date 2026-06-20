@@ -1,18 +1,18 @@
 # AI Report Generator
 
-A clean, minimalistic standalone desktop software built with **Python and PyQt6** to automatically generate comprehensive PDF reports using LLMs (OpenAI, Gemini, OpenRouter).
+A clean, minimalistic standalone desktop software built with **Python and CustomTkinter** to automatically generate comprehensive PDF reports using LLMs (OpenAI, Gemini, OpenRouter).
 
 *Made by lunarmist-byte from tinkerhub ce-alappuzha*
 
 ## Features
 
 - **Multi-LLM Support:** Seamlessly connect to OpenAI, Google Gemini, and OpenRouter APIs. Your API keys are securely saved locally.
-- **Advanced Layout Calibrator:** Features an interactive `QGraphicsView` page simulator. Drag and drop your logo, and use your mouse wheel to zoom/resize it precisely where you want it.
+- **Advanced Layout Calibrator:** Features an interactive `tkinter.Canvas` page simulator. Drag and drop your logo, and use your mouse wheel to zoom/resize it precisely where you want it.
 - **Customizable Typography & Formats:** Choose your font family (Helvetica, Times, Courier), font size, text color, and target page format (A4, Letter, Legal) for the output PDF.
 - **Multi-Page & Multi-Picture Flow:** Upload multiple pictures which seamlessly flow into the multi-page auto-generated document.
 - **Financial & Tabular Reports:** Upload raw CSV data and let the AI generate a clean, structured financial table within your report.
 - **Rich PDF Generation:** Powered by `reportlab` to produce pixel-perfect, professionally styled, multi-page PDFs.
-- **Minimalistic UI:** A dark-themed, premium desktop GUI built from the ground up for a fast, clutter-free user experience.
+- **Minimalistic UI:** A meticulously clean, modern native interface built with CustomTkinter for a fast, flat, and professional user experience.
 
 ## Prerequisites
 
@@ -23,8 +23,8 @@ A clean, minimalistic standalone desktop software built with **Python and PyQt6*
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Lunarmist-byte/attendancematcherscraper.git
-   cd attendancematcherscraper
+   git clone https://github.com/Lunarmist-byte/reportgenerator-MCP.git
+   cd reportgenerator-MCP
    ```
 
 2. **Create a virtual environment:**
@@ -38,7 +38,7 @@ A clean, minimalistic standalone desktop software built with **Python and PyQt6*
 
 4. **Install the dependencies:**
    ```bash
-   pip install PyQt6 reportlab openai google-generativeai python-dotenv pandas pillow
+   pip install customtkinter pywinstyles reportlab openai google-generativeai python-dotenv pandas pillow
    ```
 
 ## Usage
@@ -67,7 +67,7 @@ python main.py
 ## Architecture
 
 - `main.py`: Application entry point.
-- `src/ui/`: Contains the PyQt6 graphical interface modules (`main_window.py`, `settings_page.py`, `generator_page.py`, `calibrator.py`, `styles.py`).
+- `src/ui/`: Contains the CustomTkinter graphical interface modules (`main_window.py`, `settings_page.py`, `generator_page.py`, `calibrator.py`).
 - `src/core/llm_engine.py`: Handles connections and strict JSON prompting for OpenAI/Gemini/OpenRouter.
 - `src/core/pdf_engine.py`: Handles `reportlab` logic for drawing text, tables, and absolutely-positioned images on the PDF canvas.
 - `src/core/storage.py`: Manages local `config.json` state for saving API keys securely.
