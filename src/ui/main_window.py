@@ -18,13 +18,16 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
         # Content Layout
         content_layout = QHBoxLayout()
+        content_layout.setSpacing(0)
+        content_layout.setContentsMargins(0, 0, 0, 0)
         
         # Sidebar
         self.sidebar = QListWidget()
-        self.sidebar.setFixedWidth(200)
+        self.sidebar.setFixedWidth(220)
         self.sidebar.insertItem(0, "Report Generator")
         self.sidebar.insertItem(1, "API Settings")
         self.sidebar.currentRowChanged.connect(self.display_page)

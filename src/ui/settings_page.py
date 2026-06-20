@@ -10,6 +10,8 @@ class SettingsPage(QWidget):
 
     def init_ui(self):
         layout = QVBoxLayout()
+        layout.setSpacing(20)
+        layout.setContentsMargins(30, 30, 30, 30)
         
         header = QLabel("API Settings")
         header.setObjectName("Header")
@@ -40,6 +42,7 @@ class SettingsPage(QWidget):
         layout.addLayout(form_layout)
         
         save_btn = QPushButton("Save Settings")
+        save_btn.setObjectName("PrimaryButton")
         save_btn.clicked.connect(self.save_settings)
         layout.addWidget(save_btn)
         

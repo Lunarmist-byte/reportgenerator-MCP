@@ -1,16 +1,28 @@
 import os
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, LETTER, LEGAL
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
 
-def create_pdf(output_path, report_data, logo_path, logo_coords, picture_path=None):
+def create_pdf(output_path, report_data, logo_path, logo_coords, logo_scale=1.0, picture_paths=None, page_format="A4", font_settings=None):
     """
     logo_coords: tuple (x_pct, y_pct) representing top-left corner of the logo
+    logo_scale: float scale factor for the logo
+    picture_paths: list of strings (paths to images)
+    page_format: string ("A4", "Letter", "Legal")
+    font_settings: dict with keys "family", "size", "color"
     """
     
+    # Map format string to reportlab pagesize
+    format_map = {
+        "A4": A4,
+        "Letter": LETTER,
+        "Legal": LEGAL
+    }
+    selected_pagesize = format_map.get(page_format, A4)
+
     # We will use SimpleDocTemplate for the flowing text, but a custom canvas maker to draw the logo at exact absolute coordinates.
     class LogoCanvas(canvas.Canvas):
         def __init__(self, *args, **kwargs):
@@ -19,24 +31,18 @@ def create_pdf(output_path, report_data, logo_path, logo_coords, picture_path=No
         def showPage(self):
             # Draw Logo if provided
             if logo_path and os.path.exists(logo_path):
-                # A4 size is 595.27 x 841.89 points
-                w, h = A4
+                w, h = selected_pagesize
                 x_pct, y_pct = logo_coords
                 
-                # Assume logo width is approx 100 points
-                # Maintain aspect ratio
+                # Assume base logo width is approx 100 points
                 import PIL.Image as PILImage
                 try:
                     with PILImage.open(logo_path) as img:
                         img_w, img_h = img.size
                         aspect = img_h / float(img_w)
-                        logo_w = 100
+                        logo_w = 100 * logo_scale
                         logo_h = logo_w * aspect
                         
-                        # Calculate exact x, y. 
-                        # reportlab bottom-left is (0,0)
-                        # top-left of the image should be at (x_pct * w, (1 - y_pct) * h)
-                        # So bottom-left of the image is at Y = top_left_Y - logo_h
                         x = x_pct * w
                         y_top = (1 - y_pct) * h
                         y = y_top - logo_h
@@ -47,22 +53,32 @@ def create_pdf(output_path, report_data, logo_path, logo_coords, picture_path=No
 
             canvas.Canvas.showPage(self)
 
-    doc = SimpleDocTemplate(output_path, pagesize=A4,
+    doc = SimpleDocTemplate(output_path, pagesize=selected_pagesize,
                             rightMargin=72, leftMargin=72,
                             topMargin=100, bottomMargin=72)
+    
+    # Fallback font settings
+    if font_settings is None:
+        font_settings = {"family": "Helvetica", "size": 11, "color": "#333333"}
+        
+    base_font = font_settings.get("family", "Helvetica")
+    base_size = font_settings.get("size", 11)
+    text_color_hex = font_settings.get("color", "#333333")
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         'TitleStyle',
         parent=styles['Heading1'],
-        fontSize=24,
+        fontName=f"{base_font}-Bold" if base_font != "Times-Roman" else "Times-Bold",
+        fontSize=base_size * 2,
         spaceAfter=20,
-        textColor=colors.HexColor("#333333")
+        textColor=colors.HexColor(text_color_hex)
     )
     date_style = ParagraphStyle(
         'DateStyle',
         parent=styles['Normal'],
-        fontSize=12,
+        fontName=base_font,
+        fontSize=base_size + 1,
         spaceAfter=30,
         textColor=colors.HexColor("#666666"),
         alignment=1 # Center
@@ -70,9 +86,11 @@ def create_pdf(output_path, report_data, logo_path, logo_coords, picture_path=No
     body_style = ParagraphStyle(
         'BodyStyle',
         parent=styles['Normal'],
-        fontSize=11,
+        fontName=base_font,
+        fontSize=base_size,
         spaceAfter=14,
-        leading=16
+        leading=base_size * 1.5,
+        textColor=colors.HexColor(text_color_hex)
     )
 
     story = []
@@ -85,15 +103,17 @@ def create_pdf(output_path, report_data, logo_path, logo_coords, picture_path=No
     if "date" in report_data:
         story.append(Paragraph(report_data["date"], date_style))
         
-    # Optional Picture placed in flow
-    if picture_path and os.path.exists(picture_path):
-        try:
-            im = Image(picture_path, width=4*inch, height=3*inch)
-            im.hAlign = 'CENTER'
-            story.append(im)
-            story.append(Spacer(1, 20))
-        except Exception as e:
-            print(f"Error drawing picture: {e}")
+    # Optional Pictures placed in flow
+    if picture_paths:
+        for pic in picture_paths:
+            if os.path.exists(pic):
+                try:
+                    im = Image(pic, width=4*inch, height=3*inch)
+                    im.hAlign = 'CENTER'
+                    story.append(im)
+                    story.append(Spacer(1, 20))
+                except Exception as e:
+                    print(f"Error drawing picture {pic}: {e}")
             
     # Paragraphs
     if "paragraphs" in report_data:
@@ -115,13 +135,13 @@ def create_pdf(output_path, report_data, logo_path, logo_coords, picture_path=No
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f0f0f0")),
                 ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor("#333333")),
                 ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0,0), (-1,0), 12),
+                ('FONTNAME', (0,0), (-1,0), f"{base_font}-Bold" if base_font != "Times-Roman" else "Times-Bold"),
+                ('FONTSIZE', (0,0), (-1,0), base_size + 1),
                 ('BOTTOMPADDING', (0,0), (-1,0), 12),
                 ('BACKGROUND', (0,1), (-1,-1), colors.white),
                 ('GRID', (0,0), (-1,-1), 1, colors.HexColor("#cccccc")),
-                ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-                ('FONTSIZE', (0,1), (-1,-1), 10),
+                ('FONTNAME', (0,1), (-1,-1), base_font),
+                ('FONTSIZE', (0,1), (-1,-1), base_size - 1),
             ]))
             story.append(t)
 

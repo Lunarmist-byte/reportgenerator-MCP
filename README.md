@@ -7,9 +7,11 @@ A clean, minimalistic standalone desktop software built with **Python and PyQt6*
 ## Features
 
 - **Multi-LLM Support:** Seamlessly connect to OpenAI, Google Gemini, and OpenRouter APIs. Your API keys are securely saved locally.
-- **Visual Logo Calibrator:** Features an interactive `QGraphicsView` A4 page simulator. Simply drag and drop your logo exactly where you want it to appear on the final PDF.
+- **Advanced Layout Calibrator:** Features an interactive `QGraphicsView` page simulator. Drag and drop your logo, and use your mouse wheel to zoom/resize it precisely where you want it.
+- **Customizable Typography & Formats:** Choose your font family (Helvetica, Times, Courier), font size, text color, and target page format (A4, Letter, Legal) for the output PDF.
+- **Multi-Page & Multi-Picture Flow:** Upload multiple pictures which seamlessly flow into the multi-page auto-generated document.
 - **Financial & Tabular Reports:** Upload raw CSV data and let the AI generate a clean, structured financial table within your report.
-- **Rich PDF Generation:** Powered by `reportlab` to produce pixel-perfect, professionally styled PDFs that include your custom text, uploaded pictures, and precisely placed logos.
+- **Rich PDF Generation:** Powered by `reportlab` to produce pixel-perfect, professionally styled, multi-page PDFs.
 - **Minimalistic UI:** A dark-themed, premium desktop GUI built from the ground up for a fast, clutter-free user experience.
 
 ## Prerequisites
@@ -57,9 +59,10 @@ python main.py
 
 1. **Configure API:** Go to the **API Settings** tab on the left sidebar, enter your preferred API key (e.g., Gemini API Key), and select your default provider. Click **Save Settings**.
 2. **Input Notes:** Switch to the **Report Generator** tab. Enter rough notes or a summary of what you want the report to cover.
-3. **Upload Assets:** Click "Select Logo" to add a company logo, and "Select Picture" to add an inline image. If you have tabular data, click "Select CSV".
-4. **Calibrate:** Drag your logo around the visual A4 page calibrator on the right to position it precisely.
-5. **Generate:** Click **Generate Report (PDF)**. The AI will process your notes and assets, and prompt you to save the resulting PDF file.
+3. **Upload Assets:** Click "Select Logo" to add a company logo, and "Add Picture" to select multiple inline images. If you have tabular data, click "Select CSV".
+4. **Customize Typography:** Pick your font family, size, text color, and target page format (A4, Letter, Legal) directly in the UI.
+5. **Calibrate:** Drag your logo around the visual page calibrator on the right to position it precisely. Use your mouse scroll wheel to resize the logo.
+6. **Generate:** Click **Generate Report (PDF)**. The AI will process your notes and assets, and prompt you to save the resulting multi-page PDF file.
 
 ## Architecture
 

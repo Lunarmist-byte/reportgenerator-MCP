@@ -1,7 +1,8 @@
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QTextEdit, QPushButton, QFileDialog, QRadioButton, 
-                             QButtonGroup, QMessageBox, QProgressDialog)
+                             QButtonGroup, QMessageBox, QProgressDialog, QComboBox, 
+                             QSpinBox, QColorDialog)
 from PyQt6.QtCore import Qt
 from src.ui.calibrator import CalibratorView
 from src.core.storage import load_settings
@@ -12,12 +13,15 @@ class GeneratorPage(QWidget):
     def __init__(self):
         super().__init__()
         self.logo_path = None
-        self.picture_path = None
+        self.picture_paths = []
         self.csv_path = None
+        self.text_color = "#333333"
         self.init_ui()
 
     def init_ui(self):
         layout = QHBoxLayout()
+        layout.setSpacing(24)
+        layout.setContentsMargins(20, 20, 20, 20)
         
         # Left side: Inputs
         left_layout = QVBoxLayout()
@@ -42,6 +46,31 @@ class GeneratorPage(QWidget):
         type_layout.addWidget(self.fin_radio)
         left_layout.addLayout(type_layout)
         
+        # Typography & Format
+        typo_layout = QHBoxLayout()
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["A4", "Letter", "Legal"])
+        self.format_combo.currentTextChanged.connect(self.update_page_format)
+        typo_layout.addWidget(QLabel("Format:"))
+        typo_layout.addWidget(self.format_combo)
+        
+        self.font_combo = QComboBox()
+        self.font_combo.addItems(["Helvetica", "Times-Roman", "Courier"])
+        typo_layout.addWidget(QLabel("Font:"))
+        typo_layout.addWidget(self.font_combo)
+        
+        self.size_spin = QSpinBox()
+        self.size_spin.setRange(8, 24)
+        self.size_spin.setValue(11)
+        typo_layout.addWidget(QLabel("Size:"))
+        typo_layout.addWidget(self.size_spin)
+        
+        self.color_btn = QPushButton("Color")
+        self.color_btn.clicked.connect(self.select_color)
+        typo_layout.addWidget(self.color_btn)
+        
+        left_layout.addLayout(typo_layout)
+        
         # Assets
         asset_layout = QHBoxLayout()
         
@@ -49,8 +78,8 @@ class GeneratorPage(QWidget):
         self.logo_btn.clicked.connect(self.select_logo)
         asset_layout.addWidget(self.logo_btn)
         
-        self.pic_btn = QPushButton("Select Picture")
-        self.pic_btn.clicked.connect(self.select_picture)
+        self.pic_btn = QPushButton("Add Picture")
+        self.pic_btn.clicked.connect(self.add_picture)
         asset_layout.addWidget(self.pic_btn)
         
         self.csv_btn = QPushButton("Select CSV (Optional)")
@@ -64,7 +93,7 @@ class GeneratorPage(QWidget):
         
         self.generate_btn = QPushButton("Generate Report (PDF)")
         self.generate_btn.clicked.connect(self.generate_report_action)
-        self.generate_btn.setStyleSheet("background-color: #007acc; font-weight: bold;")
+        self.generate_btn.setObjectName("PrimaryButton")
         left_layout.addWidget(self.generate_btn)
         
         # Right side: Calibrator
@@ -80,6 +109,15 @@ class GeneratorPage(QWidget):
         
         self.setLayout(layout)
 
+    def update_page_format(self, text):
+        self.calibrator.set_page_format(text)
+
+    def select_color(self):
+        color = QColorDialog.getColor()
+        if color.isValid():
+            self.text_color = color.name()
+            self.color_btn.setStyleSheet(f"background-color: {self.text_color}; color: white;")
+
     def select_logo(self):
         path, _ = QFileDialog.getOpenFileName(self, "Select Logo", "", "Images (*.png *.jpg *.jpeg)")
         if path:
@@ -87,10 +125,10 @@ class GeneratorPage(QWidget):
             self.calibrator.set_logo(path)
             self.update_asset_labels()
 
-    def select_picture(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select Picture", "", "Images (*.png *.jpg *.jpeg)")
-        if path:
-            self.picture_path = path
+    def add_picture(self):
+        paths, _ = QFileDialog.getOpenFileNames(self, "Add Pictures", "", "Images (*.png *.jpg *.jpeg)")
+        if paths:
+            self.picture_paths.extend(paths)
             self.update_asset_labels()
             
     def select_csv(self):
@@ -102,7 +140,7 @@ class GeneratorPage(QWidget):
     def update_asset_labels(self):
         texts = []
         if self.logo_path: texts.append(f"Logo: {os.path.basename(self.logo_path)}")
-        if self.picture_path: texts.append(f"Pic: {os.path.basename(self.picture_path)}")
+        if self.picture_paths: texts.append(f"Pics: {len(self.picture_paths)}")
         if self.csv_path: texts.append(f"CSV: {os.path.basename(self.csv_path)}")
         self.asset_labels.setText(" | ".join(texts) if texts else "None selected")
 
@@ -140,7 +178,24 @@ class GeneratorPage(QWidget):
                 
             # 3. Create PDF
             logo_coords = self.calibrator.get_pdf_coordinates()
-            create_pdf(save_path, report_data, self.logo_path, logo_coords, self.picture_path)
+            logo_scale = self.calibrator.get_logo_scale()
+            
+            font_settings = {
+                "family": self.font_combo.currentText(),
+                "size": self.size_spin.value(),
+                "color": self.text_color
+            }
+            
+            create_pdf(
+                output_path=save_path, 
+                report_data=report_data, 
+                logo_path=self.logo_path, 
+                logo_coords=logo_coords, 
+                logo_scale=logo_scale,
+                picture_paths=self.picture_paths,
+                page_format=self.format_combo.currentText(),
+                font_settings=font_settings
+            )
             
             progress.close()
             QMessageBox.information(self, "Success", f"Report saved to:\n{save_path}")
