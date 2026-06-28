@@ -1,148 +1,97 @@
 import os
 from reportlab.lib.pagesizes import A4, LETTER, LEGAL
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import Paragraph
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
+import PIL.Image as PILImage
 
-def create_pdf(output_path, report_data, logo_path, logo_coords, logo_scale=1.0, picture_paths=None, page_format="A4", font_settings=None):
-    """
-    logo_coords: tuple (x_pct, y_pct) representing top-left corner of the logo
-    logo_scale: float scale factor for the logo
-    picture_paths: list of strings (paths to images)
-    page_format: string ("A4", "Letter", "Legal")
-    font_settings: dict with keys "family", "size", "color"
-    """
-    
-    # Map format string to reportlab pagesize
+def create_pdf(output_path, report_data, canvas_pages=None, picture_paths=None, page_format="A4", font_settings=None):
     format_map = {
         "A4": A4,
         "Letter": LETTER,
         "Legal": LEGAL
     }
     selected_pagesize = format_map.get(page_format, A4)
+    w, h = selected_pagesize
 
-    # We will use SimpleDocTemplate for the flowing text, but a custom canvas maker to draw the logo at exact absolute coordinates.
-    class LogoCanvas(canvas.Canvas):
-        def __init__(self, *args, **kwargs):
-            canvas.Canvas.__init__(self, *args, **kwargs)
-            
-        def showPage(self):
-            # Draw Logo if provided
-            if logo_path and os.path.exists(logo_path):
-                w, h = selected_pagesize
-                x_pct, y_pct = logo_coords
-                
-                # Assume base logo width is approx 100 points
-                import PIL.Image as PILImage
-                try:
-                    with PILImage.open(logo_path) as img:
-                        img_w, img_h = img.size
-                        aspect = img_h / float(img_w)
-                        logo_w = 100 * logo_scale
-                        logo_h = logo_w * aspect
-                        
-                        x = x_pct * w
-                        y_top = (1 - y_pct) * h
-                        y = y_top - logo_h
-                        
-                        self.drawImage(logo_path, x, y, width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
-                except Exception as e:
-                    print(f"Error drawing logo: {e}")
-
-            canvas.Canvas.showPage(self)
-
-    doc = SimpleDocTemplate(output_path, pagesize=selected_pagesize,
-                            rightMargin=72, leftMargin=72,
-                            topMargin=100, bottomMargin=72)
-    
-    # Fallback font settings
-    if font_settings is None:
-        font_settings = {"family": "Helvetica", "size": 11, "color": "#333333"}
-        
-    base_font = font_settings.get("family", "Helvetica")
-    base_size = font_settings.get("size", 11)
-    text_color_hex = font_settings.get("color", "#333333")
-    
+    c = canvas.Canvas(output_path, pagesize=selected_pagesize)
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'TitleStyle',
-        parent=styles['Heading1'],
-        fontName=f"{base_font}-Bold" if base_font != "Times-Roman" else "Times-Bold",
-        fontSize=base_size * 2,
-        spaceAfter=20,
-        textColor=colors.HexColor(text_color_hex)
-    )
-    date_style = ParagraphStyle(
-        'DateStyle',
-        parent=styles['Normal'],
-        fontName=base_font,
-        fontSize=base_size + 1,
-        spaceAfter=30,
-        textColor=colors.HexColor("#666666"),
-        alignment=1 # Center
-    )
-    body_style = ParagraphStyle(
-        'BodyStyle',
-        parent=styles['Normal'],
-        fontName=base_font,
-        fontSize=base_size,
-        spaceAfter=14,
-        leading=base_size * 1.5,
-        textColor=colors.HexColor(text_color_hex)
-    )
 
-    story = []
-
-    # Title
-    if "title" in report_data:
-        story.append(Paragraph(report_data["title"], title_style))
-    
-    # Date
-    if "date" in report_data:
-        story.append(Paragraph(report_data["date"], date_style))
+    if not canvas_pages:
+        canvas_pages = {1: []}
         
-    # Optional Pictures placed in flow
-    if picture_paths:
-        for pic in picture_paths:
-            if os.path.exists(pic):
+    for page_num, items in sorted(canvas_pages.items()):
+        for item in items:
+            item_type = item.get("type")
+            if item_type == "image":
+                path = item.get("path")
+                scale = item.get("scale", 1.0)
+                if path and os.path.exists(path):
+                    try:
+                        with PILImage.open(path) as img:
+                            img_w, img_h = img.size
+                            aspect = img_h / float(img_w)
+                            logo_w = (80 / 300.0) * w * scale
+                            logo_h = logo_w * aspect
+                            x = item.get("x_pct", 0) * w
+                            y_top = (1 - item.get("y_pct", 0)) * h
+                            y = y_top - logo_h
+                            c.drawImage(path, x, y, width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
+                    except Exception as e:
+                        print(f"Error drawing canvas image: {e}")
+            elif item_type == "text":
+                text_val = item.get("text", "")
+                scale = item.get("scale", 1.0)
+                color_hex = item.get("color", "#333333")
+                bold = item.get("bold", False)
+                italic = item.get("italic", False)
+                font_family = item.get("font_family", "Helvetica")
+                
+                font_size_pct = (7 / 300.0) * scale
+                scaled_size = font_size_pct * w
+                
+                font_name = font_family
+                if bold and italic:
+                    if font_family == "Times-Roman": font_name = "Times-BoldItalic"
+                    elif font_family == "Courier": font_name = "Courier-BoldOblique"
+                    else: font_name = f"{font_family}-BoldOblique"
+                elif bold:
+                    if font_family == "Times-Roman": font_name = "Times-Bold"
+                    else: font_name = f"{font_family}-Bold"
+                elif italic:
+                    if font_family == "Times-Roman": font_name = "Times-Italic"
+                    elif font_family == "Courier": font_name = "Courier-Oblique"
+                    else: font_name = f"{font_family}-Oblique"
+                    
+                style = ParagraphStyle(
+                    'CustomStyle',
+                    parent=styles['Normal'],
+                    fontName=font_name,
+                    fontSize=scaled_size,
+                    leading=scaled_size * 1.2,
+                    textColor=colors.HexColor(color_hex)
+                )
+                
+                formatted_text = str(text_val).replace('\n', '<br/>')
+                
+                if item.get("underline"):
+                    formatted_text = f"<u>{formatted_text}</u>"
+                    
                 try:
-                    im = Image(pic, width=4*inch, height=3*inch)
-                    im.hAlign = 'CENTER'
-                    story.append(im)
-                    story.append(Spacer(1, 20))
+                    p = Paragraph(formatted_text, style)
+                    
+                    wrap_width = w * item.get("w_pct", 0.8)
+                    actual_w, actual_h = p.wrap(wrap_width, h)
+                    
+                    x = item.get("x_pct", 0) * w
+                    y_top = (1 - item.get("y_pct", 0)) * h
+                    y = y_top - actual_h
+                    
+                    p.drawOn(c, x, y)
                 except Exception as e:
-                    print(f"Error drawing picture {pic}: {e}")
-            
-    # Paragraphs
-    if "paragraphs" in report_data:
-        for p in report_data["paragraphs"]:
-            story.append(Paragraph(p, body_style))
-            
-    # Table (Financials)
-    if "table" in report_data and report_data["table"]:
-        table_data = []
-        if "headers" in report_data["table"]:
-            table_data.append(report_data["table"]["headers"])
-        if "rows" in report_data["table"]:
-            table_data.extend(report_data["table"]["rows"])
-            
-        if table_data:
-            story.append(Spacer(1, 20))
-            t = Table(table_data)
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f0f0f0")),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor("#333333")),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('FONTNAME', (0,0), (-1,0), f"{base_font}-Bold" if base_font != "Times-Roman" else "Times-Bold"),
-                ('FONTSIZE', (0,0), (-1,0), base_size + 1),
-                ('BOTTOMPADDING', (0,0), (-1,0), 12),
-                ('BACKGROUND', (0,1), (-1,-1), colors.white),
-                ('GRID', (0,0), (-1,-1), 1, colors.HexColor("#cccccc")),
-                ('FONTNAME', (0,1), (-1,-1), base_font),
-                ('FONTSIZE', (0,1), (-1,-1), base_size - 1),
-            ]))
-            story.append(t)
-
-    doc.build(story, canvasmaker=LogoCanvas)
+                    print(f"Error drawing text: {e}")
+                    
+        c.showPage()
+        
+    c.save()

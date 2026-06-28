@@ -1,18 +1,18 @@
-# AI Report Generator
+# Report Generator
 
-A clean, minimalistic standalone desktop software built with **Python and CustomTkinter** to automatically generate comprehensive PDF reports using LLMs (OpenAI, Gemini, OpenRouter).
+A standalone desktop software built with **Python and CustomTkinter** to generate PDF reports using LLMs (OpenAI, Gemini, OpenRouter).
 
-*Made by lunarmist-byte from tinkerhub ce-alappuzha*
+*Made by Lunarmist-byte. [GitHub](https://github.com/Lunarmist-byte) | [LinkedIn](https://www.linkedin.com/in/amal-s-kumar-ba69a1290/)*
 
 ## Features
 
-- **Multi-LLM Support:** Seamlessly connect to OpenAI, Google Gemini, and OpenRouter APIs. Your API keys are securely saved locally.
-- **Advanced Layout Calibrator:** Features an interactive `tkinter.Canvas` page simulator. Drag and drop your logo, and use your mouse wheel to zoom/resize it precisely where you want it.
-- **Customizable Typography & Formats:** Choose your font family (Helvetica, Times, Courier), font size, text color, and target page format (A4, Letter, Legal) for the output PDF.
-- **Multi-Page & Multi-Picture Flow:** Upload multiple pictures which seamlessly flow into the multi-page auto-generated document.
-- **Financial & Tabular Reports:** Upload raw CSV data and let the AI generate a clean, structured financial table within your report.
-- **Rich PDF Generation:** Powered by `reportlab` to produce pixel-perfect, professionally styled, multi-page PDFs.
-- **Minimalistic UI:** A meticulously clean, modern native interface built with CustomTkinter for a fast, flat, and professional user experience.
+- **Multi-LLM Support:** Connect to OpenAI, Google Gemini, and OpenRouter APIs. API keys are saved locally.
+- **Layout Calibrator:** Features an interactive `tkinter.Canvas` page simulator. Drag and drop your logo, use your mouse wheel to resize, and drag corners/sides to adjust layout.
+- **Customizable Typography:** Choose your font family, font size, text color, and target page format for the output PDF.
+- **Image Support:** Upload images to include in the document.
+- **Financial & Tabular Reports:** Upload raw CSV data to generate structured financial tables.
+- **PDF Generation:** Powered by `reportlab` to produce multi-page PDFs matching your canvas layout.
+- **Minimal UI:** Native interface built with CustomTkinter.
 
 ## Prerequisites
 
