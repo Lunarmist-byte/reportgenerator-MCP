@@ -12,6 +12,9 @@ class CalibratorView(ctk.CTkFrame):
         self.pages = {1: []}
         self.current_page = 1
         
+        self.base_font_size = 11
+        self.base_font_family = "Helvetica"
+        
         self.editing_entry = None
         self.editing_window_id = None
         self.editing_item = None
@@ -68,6 +71,13 @@ class CalibratorView(ctk.CTkFrame):
         self.context_menu.add_command(label="Toggle Bold", command=self._toggle_bold)
         self.context_menu.add_command(label="Toggle Italic", command=self._toggle_italic)
         self.context_menu.add_command(label="Toggle Underline", command=self._toggle_underline)
+        
+        self.align_menu = tk.Menu(self.context_menu, tearoff=0)
+        self.align_menu.add_command(label="Left", command=lambda: self._set_align("left"))
+        self.align_menu.add_command(label="Center", command=lambda: self._set_align("center"))
+        self.align_menu.add_command(label="Right", command=lambda: self._set_align("right"))
+        self.context_menu.add_cascade(label="Alignment", menu=self.align_menu)
+        
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Delete Item", command=self._on_delete)
 
@@ -147,6 +157,7 @@ class CalibratorView(ctk.CTkFrame):
         self.context_menu.entryconfig("Toggle Bold", state=text_state)
         self.context_menu.entryconfig("Toggle Italic", state=text_state)
         self.context_menu.entryconfig("Toggle Underline", state=text_state)
+        self.context_menu.entryconfig("Alignment", state=text_state)
 
         self.context_menu.tk_popup(event.x_root, event.y_root)
 
@@ -182,6 +193,14 @@ class CalibratorView(ctk.CTkFrame):
         self._redraw_item(item)
         self._select_item(item["canvas_id"])
 
+    def clear_all(self):
+        self.pages[self.current_page] = []
+        self._redraw_all()
+        
+    def clear_generated(self):
+        self.pages[self.current_page] = [i for i in self.pages[self.current_page] if i.get("type") == "image"]
+        self._redraw_all()
+
     def add_text(self, text, x_pct=0.5, y_pct=0.5):
         item = {
             "type": "text",
@@ -189,12 +208,29 @@ class CalibratorView(ctk.CTkFrame):
             "x_pct": x_pct,
             "y_pct": y_pct,
             "scale": 1.0,
-            "font_family": "Helvetica",
+            "font_family": getattr(self, "base_font_family", "Helvetica"),
             "bold": False,
             "italic": False,
             "underline": False,
+            "align": "left",
             "color": "#000000",
             "canvas_id": None
+        }
+        self.pages[self.current_page].append(item)
+        self._redraw_item(item)
+        self._select_item(item["canvas_id"])
+
+    def add_table(self, table_data, x_pct=0.1, y_pct=0.5):
+        item = {
+            "type": "table",
+            "table_data": table_data,
+            "x_pct": x_pct,
+            "y_pct": y_pct,
+            "scale": 1.0,
+            "font_family": getattr(self, "base_font_family", "Helvetica"),
+            "color": "#000000",
+            "canvas_id": None,
+            "w_pct": 0.8
         }
         self.pages[self.current_page].append(item)
         self._redraw_item(item)
@@ -209,7 +245,7 @@ class CalibratorView(ctk.CTkFrame):
         y = int(item["y_pct"] * self.page_height)
 
         if item["type"] == "image":
-            base_width = 80
+            base_width = int((80 / 300.0) * self.page_width)
             scaled_w = max(1, int(base_width * item["scale"]))
             ratio = scaled_w / float(item["image"].size[0])
             scaled_h = max(1, int(item["image"].size[1] * ratio))
@@ -221,9 +257,9 @@ class CalibratorView(ctk.CTkFrame):
                 x, y, anchor="nw", image=item["photo"]
             )
         elif item["type"] == "text":
-            base_size = 7
+            base_size = getattr(self, "base_font_size", 14)
             scaled_size = max(4, int(base_size * item["scale"]))
-            font_str = f"{item['font_family']} {scaled_size}"
+            font_str = f"{item['font_family']} {-scaled_size}"
             if item.get("bold"):
                 font_str += " bold"
             if item.get("italic"):
@@ -231,10 +267,84 @@ class CalibratorView(ctk.CTkFrame):
             if item.get("underline"):
                 font_str += " underline"
 
+            align = item.get("align", "left")
+            wrap_width = int(self.page_width * item.get("w_pct", 0.8))
+            
+            if align == "center":
+                anchor = "n"
+                draw_x = x + int(wrap_width / 2)
+            elif align == "right":
+                anchor = "ne"
+                draw_x = x + wrap_width
+            else:
+                anchor = "nw"
+                draw_x = x
+
             item["canvas_id"] = self.canvas.create_text(
-                x, y, anchor="nw", text=item["text"], font=font_str,
-                fill=item["color"], width=int(self.page_width * item.get("w_pct", 0.8))
+                draw_x, y, anchor=anchor, text=item["text"], font=font_str,
+                fill=item["color"], width=wrap_width,
+                justify=align
             )
+        elif item["type"] == "table":
+            base_size = getattr(self, "base_font_size", 14)
+            scaled_size = max(4, int(base_size * item["scale"]))
+            font_str = f"{item['font_family']} {-scaled_size}"
+            bold_font_str = font_str + " bold"
+            
+            table_w = int(self.page_width * item.get("w_pct", 0.8))
+            
+            # create a group (canvas_id will be a rectangle enclosing the table for dragging)
+            headers = item["table_data"].get("headers", [])
+            rows = item["table_data"].get("rows", [])
+            
+            col_count = max(1, len(headers))
+            col_width = table_w / col_count
+            
+            current_y = y
+            row_height = scaled_size * 2
+            
+            # Draw header background
+            header_rect = self.canvas.create_rectangle(x, current_y, x + table_w, current_y + row_height, fill="#e5e7eb", outline="#d1d5db")
+            
+            # We need a primary canvas_id for the bounding box and selection/dragging.
+            # We'll create a main bounding box that encompasses the entire table at the end.
+            
+            # Draw headers
+            for i, h_text in enumerate(headers):
+                cell_x = x + i * col_width
+                self.canvas.create_text(cell_x + 5, current_y + row_height/2, anchor="w", text=str(h_text), font=bold_font_str, fill=item["color"], width=int(col_width - 10))
+            
+            current_y += row_height
+            
+            # Draw rows
+            for row in rows:
+                for i, cell_text in enumerate(row):
+                    cell_x = x + i * col_width
+                    self.canvas.create_rectangle(cell_x, current_y, cell_x + col_width, current_y + row_height, fill="", outline="#d1d5db")
+                    self.canvas.create_text(cell_x + 5, current_y + row_height/2, anchor="w", text=str(cell_text), font=font_str, fill=item["color"], width=int(col_width - 10))
+                current_y += row_height
+                
+            # Create the main transparent bounding box for interaction
+            item["canvas_id"] = self.canvas.create_rectangle(x, y, x + table_w, current_y, fill="", outline="blue" if self.selected_item == item.get("canvas_id") else "", dash=(4,4), state="normal" if self.selected_item == item.get("canvas_id") else "hidden")
+
+    def _get_item_bbox(self, item_or_id):
+        if isinstance(item_or_id, int):
+            item = next((i for p in self.pages[self.current_page] if i.get("canvas_id") == item_or_id), None)
+            canvas_id = item_or_id
+        else:
+            item = item_or_id
+            canvas_id = item.get("canvas_id") if item else None
+            
+        if not canvas_id: return None
+        bbox = self.canvas.bbox(canvas_id)
+        if not bbox: return None
+        
+        if item and item["type"] == "text":
+            left = int(item["x_pct"] * self.page_width)
+            wrap_width = int(self.page_width * item.get("w_pct", 0.8))
+            return (left, bbox[1], left + wrap_width, bbox[3])
+            
+        return bbox
 
     def _select_item(self, canvas_id):
         self.selected_item = canvas_id
@@ -247,7 +357,7 @@ class CalibratorView(ctk.CTkFrame):
             self.handle_ids = {}
 
         if self.selected_item:
-            bbox = self.canvas.bbox(self.selected_item)
+            bbox = self._get_item_bbox(self.selected_item)
             if bbox:
                 self.selection_rect_id = self.canvas.create_rectangle(
                     bbox[0]-2, bbox[1]-2, bbox[2]+2, bbox[3]+2,
@@ -275,7 +385,7 @@ class CalibratorView(ctk.CTkFrame):
 
     def _update_selection_box(self):
         if self.selected_item and self.selection_rect_id:
-            bbox = self.canvas.bbox(self.selected_item)
+            bbox = self._get_item_bbox(self.selected_item)
             if bbox:
                 x1, y1, x2, y2 = bbox[0]-2, bbox[1]-2, bbox[2]+2, bbox[3]+2
                 self.canvas.coords(self.selection_rect_id, x1, y1, x2, y2)
@@ -310,7 +420,7 @@ class CalibratorView(ctk.CTkFrame):
             self.drag_data["y"] = event.y
             self.drag_data["item"] = self.selected_item
             
-            bbox = self.canvas.bbox(self.selected_item)
+            bbox = self._get_item_bbox(self.selected_item)
             self.drag_data["cx"] = (bbox[0] + bbox[2]) / 2
             self.drag_data["cy"] = (bbox[1] + bbox[3]) / 2
             return
@@ -359,15 +469,15 @@ class CalibratorView(ctk.CTkFrame):
             
             for item in self.pages[self.current_page]:
                 if item["canvas_id"] == self.drag_data["item"]:
-                    bbox = self.canvas.bbox(item["canvas_id"])
+                    bbox = self._get_item_bbox(item)
                     if bbox:
                         old_w = bbox[2] - bbox[0]
                         old_h = bbox[3] - bbox[1]
                         cx_pct = item["x_pct"] + (old_w / 2) / self.page_width
                         cy_pct = item["y_pct"] + (old_h / 2) / self.page_height
                         
-                        is_text = item.get("type") == "text"
-                        if is_text and handle in ("E", "W"):
+                        is_text_or_table = item.get("type") in ("text", "table")
+                        if is_text_or_table and handle in ("E", "W"):
                             if handle == "E":
                                 new_w = event.x - bbox[0]
                             else:
@@ -381,32 +491,39 @@ class CalibratorView(ctk.CTkFrame):
                         
                         self._redraw_item(item)
                         
-                        new_bbox = self.canvas.bbox(item["canvas_id"])
+                        new_bbox = self._get_item_bbox(item)
                         if new_bbox:
                             new_w = new_bbox[2] - new_bbox[0]
                             new_h = new_bbox[3] - new_bbox[1]
-                            if not (is_text and handle in ("E", "W")):
+                            if not (is_text_or_table and handle in ("E", "W")):
                                 item["x_pct"] = cx_pct - (new_w / 2) / self.page_width
                                 item["y_pct"] = cy_pct - (new_h / 2) / self.page_height
                             
                             self._redraw_item(item)
-                            self._select_item(item["canvas_id"])
-                            self.drag_data["item"] = item["canvas_id"]
+                            
+                        self._select_item(item["canvas_id"])
+                        self.drag_data["item"] = item["canvas_id"]
                     break
         elif self.drag_data.get("mode") == "move":
             dx = event.x - self.drag_data["x"]
             dy = event.y - self.drag_data["y"]
-            self.canvas.move(self.drag_data["item"], dx, dy)
-            self.drag_data["x"] = event.x
-            self.drag_data["y"] = event.y
-            self._update_selection_box()
-            
             dx_pct = dx / self.page_width
             dy_pct = dy / self.page_height
+            
             for item in self.pages[self.current_page]:
                 if item["canvas_id"] == self.drag_data["item"]:
                     item["x_pct"] += dx_pct
                     item["y_pct"] += dy_pct
+                    if item.get("type") == "table":
+                        self._redraw_item(item)
+                        self._select_item(item["canvas_id"])
+                        self.drag_data["item"] = item["canvas_id"]
+                    else:
+                        self.canvas.move(self.drag_data["item"], dx, dy)
+                        self._update_selection_box()
+                    
+                    self.drag_data["x"] = event.x
+                    self.drag_data["y"] = event.y
                     break
                         
     def _on_drag_release(self, event):
@@ -420,7 +537,7 @@ class CalibratorView(ctk.CTkFrame):
 
         for item in self.pages[self.current_page]:
             if item["canvas_id"] == self.selected_item:
-                bbox = self.canvas.bbox(item["canvas_id"])
+                bbox = self._get_item_bbox(item)
                 if bbox:
                     old_w = bbox[2] - bbox[0]
                     old_h = bbox[3] - bbox[1]
@@ -431,7 +548,7 @@ class CalibratorView(ctk.CTkFrame):
                     
                     self._redraw_item(item)
                     
-                    new_bbox = self.canvas.bbox(item["canvas_id"])
+                    new_bbox = self._get_item_bbox(item)
                     if new_bbox:
                         new_w = new_bbox[2] - new_bbox[0]
                         new_h = new_bbox[3] - new_bbox[1]
@@ -464,16 +581,20 @@ class CalibratorView(ctk.CTkFrame):
         x = int(item["x_pct"] * self.page_width)
         y = int(item["y_pct"] * self.page_height)
         
-        base_size = 14
+        base_size = getattr(self, "base_font_size", 14)
         scaled_size = max(4, int(base_size * item["scale"]))
-        font_str = f"{item['font_family']} {scaled_size}"
+        font_str = f"{item['font_family']} {-scaled_size}"
         
         self.editing_entry = tk.Text(self.canvas, font=font_str, fg=item["color"], bg="#ffffff", bd=1, relief="solid", wrap="word")
         self.editing_entry.insert("1.0", item["text"])
         
         pixel_width = int(self.page_width * item.get("w_pct", 0.8))
-        bbox = self.canvas.bbox(item["canvas_id"])
+        bbox = self._get_item_bbox(item)
         pixel_height = max(100, (bbox[3] - bbox[1]) + 20) if bbox else 100
+        
+        # Center align editing text if applicable
+        self.editing_entry.tag_configure("align", justify=item.get("align", "left"))
+        self.editing_entry.tag_add("align", "1.0", "end")
         
         self.editing_window_id = self.canvas.create_window(x, y, anchor="nw", window=self.editing_entry, width=pixel_width, height=pixel_height)
         self.editing_entry.focus_set()
@@ -528,6 +649,13 @@ class CalibratorView(ctk.CTkFrame):
                 self._select_item(item["canvas_id"])
                 break
                 
+    def _set_align(self, align):
+        for item in self.pages[self.current_page]:
+            if item["canvas_id"] == self.selected_item and item["type"] == "text":
+                item["align"] = align
+                self._redraw_item(item)
+                self._select_item(item["canvas_id"])
+                break
 
 
     def _on_delete(self, event=None):

@@ -1,8 +1,9 @@
 import os
 from reportlab.lib.pagesizes import A4, LETTER, LEGAL
 from reportlab.lib import colors
-from reportlab.platypus import Paragraph
+from reportlab.platypus import Paragraph, Table, TableStyle
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 from reportlab.pdfgen import canvas
 import PIL.Image as PILImage
 from reportlab.pdfbase import pdfmetrics
@@ -82,6 +83,14 @@ def create_pdf(output_path, report_data, canvas_pages=None, picture_paths=None, 
                         if font_family == "Times-Roman": font_name = "Times-Italic"
                         elif font_family == "Courier": font_name = "Courier-Oblique"
                         else: font_name = f"{font_family}-Oblique"
+                        
+                align_val = item.get("align", "left")
+                if align_val == "center":
+                    alignment_enum = TA_CENTER
+                elif align_val == "right":
+                    alignment_enum = TA_RIGHT
+                else:
+                    alignment_enum = TA_LEFT
                     
                 style = ParagraphStyle(
                     'CustomStyle',
@@ -89,7 +98,8 @@ def create_pdf(output_path, report_data, canvas_pages=None, picture_paths=None, 
                     fontName=font_name,
                     fontSize=scaled_size,
                     leading=scaled_size * 1.2,
-                    textColor=colors.HexColor(color_hex)
+                    textColor=colors.HexColor(color_hex),
+                    alignment=alignment_enum
                 )
                 
                 formatted_text = str(text_val).replace('\n', '<br/>')
@@ -110,7 +120,54 @@ def create_pdf(output_path, report_data, canvas_pages=None, picture_paths=None, 
                     p.drawOn(c, x, y)
                 except Exception:
                     pass
-                    
+            elif item_type == "table":
+                table_data = item.get("table_data", {})
+                headers = table_data.get("headers", [])
+                rows = table_data.get("rows", [])
+                
+                scale = item.get("scale", 1.0)
+                base_size = font_settings.get("size", 14) if font_settings else 14
+                scaled_size = max(4, int(base_size * scale))
+                
+                # We need to construct the data for the Table class
+                # reportlab.platypus.Table expects a list of lists.
+                table_grid = []
+                if headers:
+                    table_grid.append(headers)
+                for row in rows:
+                    table_grid.append(row)
+                
+                if not table_grid:
+                    continue
+                
+                wrap_width = w * item.get("w_pct", 0.8)
+                
+                # Apply financial table styles
+                style_commands = [
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, 0), f"{item.get('font_family', 'Helvetica')}-Bold"),
+                    ('FONTSIZE', (0, 0), (-1, 0), scaled_size),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                    ('FONTNAME', (0, 1), (-1, -1), item.get('font_family', 'Helvetica')),
+                    ('FONTSIZE', (0, 1), (-1, -1), scaled_size),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor("#d1d5db")),
+                ]
+                
+                t = Table(table_grid, width=wrap_width)
+                t.setStyle(TableStyle(style_commands))
+                
+                # Note: Table objects don't wrap automatically like Paragraphs to calculate their height.
+                # The wrap method is required to calculate the actual width and height required.
+                actual_w, actual_h = t.wrap(wrap_width, h)
+                
+                x = item.get("x_pct", 0) * w
+                y_top = (1 - item.get("y_pct", 0)) * h
+                y = y_top - actual_h
+                
+                t.drawOn(c, x, y)
         c.showPage()
         
     c.save()

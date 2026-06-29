@@ -85,7 +85,8 @@ class GeneratorPage(ctk.CTkFrame):
             row=0, column=2, padx=4, pady=(14, 0), sticky="w"
         )
         self.size_combo = ctk.CTkOptionMenu(
-            typo_card, values=[str(i) for i in range(8, 25)], width=65
+            typo_card, values=[str(i) for i in range(8, 25)], width=65,
+            command=self.update_size
         )
         self.size_combo.set("11")
         self.size_combo.grid(row=1, column=2, padx=4, pady=(4, 14), sticky="w")
@@ -151,6 +152,8 @@ class GeneratorPage(ctk.CTkFrame):
         ).grid(row=0, column=0, sticky="e", pady=(0, 4))
 
         self.calibrator = CalibratorView(right)
+        self.calibrator.base_font_size = int(self.size_combo.get())
+        self.calibrator.base_font_family = self.font_combo.get()
         self.calibrator.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
 
     def update_page_format(self, text):
@@ -185,11 +188,25 @@ class GeneratorPage(ctk.CTkFrame):
             )
             if path:
                 self.custom_font_path = path
+                self.calibrator.base_font_family = "Custom..."
             else:
                 self.font_combo.set("Helvetica")
                 self.custom_font_path = None
+                self.calibrator.base_font_family = "Helvetica"
         else:
             self.custom_font_path = None
+            self.calibrator.base_font_family = text
+            
+        # Update existing items
+        for page in self.calibrator.pages.values():
+            for item in page:
+                if item.get("type") in ("text", "table"):
+                    item["font_family"] = self.calibrator.base_font_family
+        self.calibrator._redraw_all()
+
+    def update_size(self, size_str):
+        self.calibrator.base_font_size = int(size_str)
+        self.calibrator._redraw_all()
 
     def select_color(self):
         color_code = tkinter.colorchooser.askcolor(title="Choose text color")[1]
@@ -248,15 +265,17 @@ class GeneratorPage(ctk.CTkFrame):
                     
                 def append_to_ui():
                     try:
+                        self.calibrator.clear_generated()
                         y_offset = 0.05
                         
-                        def place_and_get_offset(text, x_pct, scale=1.0, bold=False, padding=0.03):
+                        def place_and_get_offset(text, x_pct, scale=1.0, bold=False, padding=0.03, align="left"):
                             nonlocal y_offset
                             self.calibrator.add_text(text, x_pct=x_pct, y_pct=y_offset)
                             item = self.calibrator.pages[self.calibrator.current_page][-1]
                             item["scale"] = scale
                             item["bold"] = bold
                             item["color"] = self.text_color
+                            item["align"] = align
                             self.calibrator._redraw_item(item)
                             
                             bbox = self.calibrator.canvas.bbox(item["canvas_id"])
@@ -267,7 +286,7 @@ class GeneratorPage(ctk.CTkFrame):
                                 y_offset += 0.08
                                 
                         if "title" in report_data and report_data["title"]:
-                            place_and_get_offset(report_data["title"], x_pct=0.1, scale=1.4, bold=True, padding=0.04)
+                            place_and_get_offset(report_data["title"], x_pct=0.1, scale=1.4, bold=True, padding=0.04, align="center")
                             
                         if "date" in report_data and report_data["date"]:
                             place_and_get_offset(report_data["date"], x_pct=0.1, scale=0.9, padding=0.04)
@@ -277,12 +296,17 @@ class GeneratorPage(ctk.CTkFrame):
                             place_and_get_offset(para, x_pct=0.1, scale=1.0, padding=0.04)
                             
                         if report_data.get("table") and report_data["table"]:
-                            headers = " | ".join(report_data["table"].get("headers", []))
-                            place_and_get_offset(headers, x_pct=0.1, scale=1.0, bold=True, padding=0.01)
+                            self.calibrator.add_table(report_data["table"], x_pct=0.1, y_pct=y_offset)
+                            item = self.calibrator.pages[self.calibrator.current_page][-1]
+                            item["color"] = self.text_color
+                            self.calibrator._redraw_item(item)
                             
-                            for row in report_data["table"].get("rows", []):
-                                row_text = " | ".join(row)
-                                place_and_get_offset(row_text, x_pct=0.1, scale=0.9, padding=0.01)
+                            bbox = self.calibrator.canvas.bbox(item["canvas_id"])
+                            if bbox:
+                                h = bbox[3] - bbox[1]
+                                y_offset += (h / self.calibrator.page_height) + 0.04
+                            else:
+                                y_offset += 0.2
                                 
                         self.generate_btn.configure(text="Generate AI Content", state="normal")
                         tkinter.messagebox.showinfo("Success", "AI Content has been added to your canvas!")
