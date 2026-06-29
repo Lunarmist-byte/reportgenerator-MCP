@@ -5,15 +5,31 @@ from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.pdfgen import canvas
 import PIL.Image as PILImage
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 def create_pdf(output_path, report_data, canvas_pages=None, picture_paths=None, page_format="A4", font_settings=None):
-    format_map = {
-        "A4": A4,
-        "Letter": LETTER,
-        "Legal": LEGAL
-    }
-    selected_pagesize = format_map.get(page_format, A4)
+    if isinstance(page_format, tuple):
+        selected_pagesize = page_format
+    else:
+        format_map = {
+            "A4": A4,
+            "Letter": LETTER,
+            "Legal": LEGAL
+        }
+        selected_pagesize = format_map.get(page_format, A4)
+        
     w, h = selected_pagesize
+    
+    font_settings = font_settings or {}
+    custom_font_path = font_settings.get("custom_path")
+    has_custom_font = False
+    if custom_font_path and os.path.exists(custom_font_path):
+        try:
+            pdfmetrics.registerFont(TTFont('CustomFont', custom_font_path))
+            has_custom_font = True
+        except Exception:
+            pass
 
     c = canvas.Canvas(output_path, pagesize=selected_pagesize)
     styles = getSampleStyleSheet()
@@ -38,31 +54,34 @@ def create_pdf(output_path, report_data, canvas_pages=None, picture_paths=None, 
                             y_top = (1 - item.get("y_pct", 0)) * h
                             y = y_top - logo_h
                             c.drawImage(path, x, y, width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
-                    except Exception as e:
-                        print(f"Error drawing canvas image: {e}")
+                    except Exception:
+                        pass
             elif item_type == "text":
                 text_val = item.get("text", "")
                 scale = item.get("scale", 1.0)
-                color_hex = item.get("color", "#333333")
+                color_hex = item.get("color", "#000000")
                 bold = item.get("bold", False)
                 italic = item.get("italic", False)
                 font_family = item.get("font_family", "Helvetica")
                 
-                font_size_pct = (7 / 300.0) * scale
-                scaled_size = font_size_pct * w
+                base_size = font_settings.get("size", 14) if font_settings else 14
+                scaled_size = max(4, int(base_size * scale))
                 
                 font_name = font_family
-                if bold and italic:
-                    if font_family == "Times-Roman": font_name = "Times-BoldItalic"
-                    elif font_family == "Courier": font_name = "Courier-BoldOblique"
-                    else: font_name = f"{font_family}-BoldOblique"
-                elif bold:
-                    if font_family == "Times-Roman": font_name = "Times-Bold"
-                    else: font_name = f"{font_family}-Bold"
-                elif italic:
-                    if font_family == "Times-Roman": font_name = "Times-Italic"
-                    elif font_family == "Courier": font_name = "Courier-Oblique"
-                    else: font_name = f"{font_family}-Oblique"
+                if font_family == "Custom..." and has_custom_font:
+                    font_name = "CustomFont"
+                else:
+                    if bold and italic:
+                        if font_family == "Times-Roman": font_name = "Times-BoldItalic"
+                        elif font_family == "Courier": font_name = "Courier-BoldOblique"
+                        else: font_name = f"{font_family}-BoldOblique"
+                    elif bold:
+                        if font_family == "Times-Roman": font_name = "Times-Bold"
+                        else: font_name = f"{font_family}-Bold"
+                    elif italic:
+                        if font_family == "Times-Roman": font_name = "Times-Italic"
+                        elif font_family == "Courier": font_name = "Courier-Oblique"
+                        else: font_name = f"{font_family}-Oblique"
                     
                 style = ParagraphStyle(
                     'CustomStyle',
@@ -89,8 +108,8 @@ def create_pdf(output_path, report_data, canvas_pages=None, picture_paths=None, 
                     y = y_top - actual_h
                     
                     p.drawOn(c, x, y)
-                except Exception as e:
-                    print(f"Error drawing text: {e}")
+                except Exception:
+                    pass
                     
         c.showPage()
         

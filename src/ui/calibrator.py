@@ -5,7 +5,6 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 
 class CalibratorView(ctk.CTkFrame):
-    """A simulated page canvas where the user can spawn, position, and scale logos, text, and AI flow boxes."""
 
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color="#121214", corner_radius=12, **kwargs)
@@ -21,14 +20,19 @@ class CalibratorView(ctk.CTkFrame):
         self.drawing_rect_id = None
         self.selected_item = None
         self.selection_rect_id = None
-
-        self.canvas = ctk.CTkCanvas(
-            self, bg="#ffffff", highlightthickness=0, cursor="crosshair"
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        
+        self.canvas_container = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.canvas_container.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        
+        self.canvas = tk.Canvas(
+            self.canvas_container, bg="#ffffff", highlightthickness=0, cursor="crosshair"
         )
-        self.canvas.pack(padx=16, pady=(16, 8), expand=True, fill="both")
+        self.canvas.pack(expand=True, fill="none", anchor="center")
 
         self.pagination_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.pagination_frame.pack(side="bottom", fill="x", padx=16, pady=(0, 16))
+        self.pagination_frame.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 16))
         
         self.prev_btn = ctk.CTkButton(self.pagination_frame, text="< Prev", width=60, command=self._prev_page, fg_color="#323232", hover_color="#454545")
         self.prev_btn.pack(side="left")
@@ -99,17 +103,20 @@ class CalibratorView(ctk.CTkFrame):
 
 
     def set_page_format(self, format_name):
-        formats = {
-            "A4": (595.27, 841.89),
-            "Letter": (612.0, 792.0),
-            "Legal": (612.0, 1008.0),
-        }
-        if format_name not in formats:
-            format_name = "A4"
-        self.pdf_width, self.pdf_height = formats[format_name]
+        if isinstance(format_name, tuple):
+            self.pdf_width, self.pdf_height = format_name
+        else:
+            formats = {
+                "A4": (595.27, 841.89),
+                "Letter": (612.0, 792.0),
+                "Legal": (612.0, 1008.0),
+            }
+            if format_name not in formats:
+                format_name = "A4"
+            self.pdf_width, self.pdf_height = formats[format_name]
 
-        self.page_width = 300
-        self.page_height = int((self.pdf_height / self.pdf_width) * self.page_width)
+        self.page_width = int(self.pdf_width)
+        self.page_height = int(self.pdf_height)
         self.canvas.configure(width=self.page_width, height=self.page_height)
         self._redraw_all()
 
@@ -186,7 +193,7 @@ class CalibratorView(ctk.CTkFrame):
             "bold": False,
             "italic": False,
             "underline": False,
-            "color": "#333333",
+            "color": "#000000",
             "canvas_id": None
         }
         self.pages[self.current_page].append(item)
@@ -359,7 +366,18 @@ class CalibratorView(ctk.CTkFrame):
                         cx_pct = item["x_pct"] + (old_w / 2) / self.page_width
                         cy_pct = item["y_pct"] + (old_h / 2) / self.page_height
                         
-                        item["scale"] = max(0.1, min(item.get("scale", 1.0) * factor, 5.0))
+                        is_text = item.get("type") == "text"
+                        if is_text and handle in ("E", "W"):
+                            if handle == "E":
+                                new_w = event.x - bbox[0]
+                            else:
+                                new_w = bbox[2] - event.x
+                            item["w_pct"] = max(0.05, new_w / self.page_width)
+                            if handle == "W":
+                                dx = event.x - bbox[0]
+                                item["x_pct"] += dx / self.page_width
+                        else:
+                            item["scale"] = max(0.1, min(item.get("scale", 1.0) * factor, 5.0))
                         
                         self._redraw_item(item)
                         
@@ -367,8 +385,9 @@ class CalibratorView(ctk.CTkFrame):
                         if new_bbox:
                             new_w = new_bbox[2] - new_bbox[0]
                             new_h = new_bbox[3] - new_bbox[1]
-                            item["x_pct"] = cx_pct - (new_w / 2) / self.page_width
-                            item["y_pct"] = cy_pct - (new_h / 2) / self.page_height
+                            if not (is_text and handle in ("E", "W")):
+                                item["x_pct"] = cx_pct - (new_w / 2) / self.page_width
+                                item["y_pct"] = cy_pct - (new_h / 2) / self.page_height
                             
                             self._redraw_item(item)
                             self._select_item(item["canvas_id"])
@@ -449,20 +468,23 @@ class CalibratorView(ctk.CTkFrame):
         scaled_size = max(4, int(base_size * item["scale"]))
         font_str = f"{item['font_family']} {scaled_size}"
         
-        self.editing_entry = tk.Entry(self.canvas, font=font_str, fg=item["color"], bg="#ffffff", bd=1, relief="solid")
-        self.editing_entry.insert(0, item["text"])
+        self.editing_entry = tk.Text(self.canvas, font=font_str, fg=item["color"], bg="#ffffff", bd=1, relief="solid", wrap="word")
+        self.editing_entry.insert("1.0", item["text"])
         
-        self.editing_window_id = self.canvas.create_window(x, y, anchor="nw", window=self.editing_entry)
+        pixel_width = int(self.page_width * item.get("w_pct", 0.8))
+        bbox = self.canvas.bbox(item["canvas_id"])
+        pixel_height = max(100, (bbox[3] - bbox[1]) + 20) if bbox else 100
+        
+        self.editing_window_id = self.canvas.create_window(x, y, anchor="nw", window=self.editing_entry, width=pixel_width, height=pixel_height)
         self.editing_entry.focus_set()
         
-        self.editing_entry.bind("<Return>", self._finish_inline_edit)
         self.editing_entry.bind("<FocusOut>", self._finish_inline_edit)
 
     def _finish_inline_edit(self, event):
         if not self.editing_entry or not self.editing_item:
             return
             
-        new_text = self.editing_entry.get()
+        new_text = self.editing_entry.get("1.0", "end-1c")
         if new_text.strip() or new_text:
             self.editing_item["text"] = new_text
         else:

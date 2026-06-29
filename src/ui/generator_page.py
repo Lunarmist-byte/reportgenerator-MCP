@@ -1,5 +1,5 @@
 import os
-# pyrefly: ignore [missing-import]
+import threading
 import customtkinter as ctk
 import tkinter.filedialog
 import tkinter.colorchooser
@@ -16,6 +16,8 @@ class GeneratorPage(ctk.CTkFrame):
         self.picture_paths = []
         self.csv_path = None
         self.text_color = "#000000"
+        self.custom_font_path = None
+        self.custom_page_format = None
         self.grid_columnconfigure(0, weight=3)
         self.grid_columnconfigure(1, weight=2)
         self.grid_rowconfigure(0, weight=1)
@@ -65,7 +67,7 @@ class GeneratorPage(ctk.CTkFrame):
             row=0, column=0, padx=(20, 4), pady=(14, 0), sticky="w"
         )
         self.format_combo = ctk.CTkOptionMenu(
-            typo_card, values=["A4", "Letter", "Legal"], width=90,
+            typo_card, values=["A4", "Letter", "Legal", "Custom..."], width=90,
             command=self.update_page_format
         )
         self.format_combo.grid(row=1, column=0, padx=(20, 12), pady=(4, 14), sticky="w")
@@ -74,7 +76,8 @@ class GeneratorPage(ctk.CTkFrame):
             row=0, column=1, padx=4, pady=(14, 0), sticky="w"
         )
         self.font_combo = ctk.CTkOptionMenu(
-            typo_card, values=["Helvetica", "Times-Roman", "Courier"], width=130
+            typo_card, values=["Helvetica", "Times-Roman", "Courier", "Custom..."], width=130,
+            command=self.update_font
         )
         self.font_combo.grid(row=1, column=1, padx=4, pady=(4, 14), sticky="w")
 
@@ -91,7 +94,7 @@ class GeneratorPage(ctk.CTkFrame):
             typo_card, text="● Color", width=80, height=30,
             fg_color="#323232", hover_color="#454545",
             command=self.select_color, corner_radius=8,
-            font=ctk.CTkFont(size=12)
+            font=ctk.CTkFont(size=12), text_color="#000000"
         )
         self.color_btn.grid(row=1, column=3, padx=(4, 20), pady=(4, 14), sticky="w")
 
@@ -151,7 +154,42 @@ class GeneratorPage(ctk.CTkFrame):
         self.calibrator.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
 
     def update_page_format(self, text):
-        self.calibrator.set_page_format(text)
+        if text == "Custom...":
+            dialog = ctk.CTkInputDialog(text="Enter dimensions (width, height) in mm (e.g. 210, 297):", title="Custom Size")
+            result = dialog.get_input()
+            if result:
+                try:
+                    parts = result.split(",")
+                    w_mm, h_mm = float(parts[0]), float(parts[1])
+                    w_pt = (w_mm / 25.4) * 72
+                    h_pt = (h_mm / 25.4) * 72
+                    self.custom_page_format = (w_pt, h_pt)
+                    self.calibrator.set_page_format((w_pt, h_pt))
+                except Exception:
+                    tkinter.messagebox.showerror("Error", "Invalid dimensions format.")
+                    self.format_combo.set("A4")
+                    self.custom_page_format = None
+                    self.calibrator.set_page_format("A4")
+            else:
+                self.format_combo.set("A4")
+                self.custom_page_format = None
+                self.calibrator.set_page_format("A4")
+        else:
+            self.custom_page_format = None
+            self.calibrator.set_page_format(text)
+
+    def update_font(self, text):
+        if text == "Custom...":
+            path = tkinter.filedialog.askopenfilename(
+                title="Select Custom Font", filetypes=[("TrueType Font", "*.ttf")]
+            )
+            if path:
+                self.custom_font_path = path
+            else:
+                self.font_combo.set("Helvetica")
+                self.custom_font_path = None
+        else:
+            self.custom_font_path = None
 
     def select_color(self):
         color_code = tkinter.colorchooser.askcolor(title="Choose text color")[1]
@@ -202,64 +240,65 @@ class GeneratorPage(ctk.CTkFrame):
         self.generate_btn.configure(text="Generating…", state="disabled")
         self.update()
 
-        try:
-            report_data = generate_report(settings, notes, report_type, csv_data)
-            if not report_data:
-                raise Exception("LLM returned no data.")
-                
-            import threading
-            
-            def append_to_ui():
-                try:
-                    y_offset = 0.05
+        def run_generation():
+            try:
+                report_data = generate_report(settings, notes, report_type, csv_data)
+                if not report_data:
+                    raise Exception("LLM returned no data.")
                     
-                    def place_and_get_offset(text, x_pct, scale=1.0, bold=False, padding=0.03):
-                        nonlocal y_offset
-                        self.calibrator.add_text(text, x_pct=x_pct, y_pct=y_offset)
-                        item = self.calibrator.pages[self.calibrator.current_page][-1]
-                        item["scale"] = scale
-                        item["bold"] = bold
-                        item["color"] = self.text_color
-                        self.calibrator._redraw_item(item)
+                def append_to_ui():
+                    try:
+                        y_offset = 0.05
                         
-                        bbox = self.calibrator.canvas.bbox(item["canvas_id"])
-                        if bbox:
-                            h = bbox[3] - bbox[1]
-                            y_offset += (h / self.calibrator.page_height) + padding
-                        else:
-                            y_offset += 0.08
+                        def place_and_get_offset(text, x_pct, scale=1.0, bold=False, padding=0.03):
+                            nonlocal y_offset
+                            self.calibrator.add_text(text, x_pct=x_pct, y_pct=y_offset)
+                            item = self.calibrator.pages[self.calibrator.current_page][-1]
+                            item["scale"] = scale
+                            item["bold"] = bold
+                            item["color"] = self.text_color
+                            self.calibrator._redraw_item(item)
                             
-                    if "title" in report_data and report_data["title"]:
-                        place_and_get_offset(report_data["title"], x_pct=0.1, scale=1.4, bold=True, padding=0.04)
-                        
-                    if "date" in report_data and report_data["date"]:
-                        place_and_get_offset(report_data["date"], x_pct=0.1, scale=0.9, padding=0.04)
-                        
-                    for para in report_data.get("paragraphs", []):
-                        if not para.strip(): continue
-                        place_and_get_offset(para, x_pct=0.1, scale=1.0, padding=0.04)
-                        
-                    if report_data.get("table") and report_data["table"]:
-                        headers = " | ".join(report_data["table"].get("headers", []))
-                        place_and_get_offset(headers, x_pct=0.1, scale=1.0, bold=True, padding=0.01)
-                        
-                        for row in report_data["table"].get("rows", []):
-                            row_text = " | ".join(row)
-                            place_and_get_offset(row_text, x_pct=0.1, scale=0.9, padding=0.01)
+                            bbox = self.calibrator.canvas.bbox(item["canvas_id"])
+                            if bbox:
+                                h = bbox[3] - bbox[1]
+                                y_offset += (h / self.calibrator.page_height) + padding
+                            else:
+                                y_offset += 0.08
+                                
+                        if "title" in report_data and report_data["title"]:
+                            place_and_get_offset(report_data["title"], x_pct=0.1, scale=1.4, bold=True, padding=0.04)
                             
+                        if "date" in report_data and report_data["date"]:
+                            place_and_get_offset(report_data["date"], x_pct=0.1, scale=0.9, padding=0.04)
+                            
+                        for para in report_data.get("paragraphs", []):
+                            if not para.strip(): continue
+                            place_and_get_offset(para, x_pct=0.1, scale=1.0, padding=0.04)
+                            
+                        if report_data.get("table") and report_data["table"]:
+                            headers = " | ".join(report_data["table"].get("headers", []))
+                            place_and_get_offset(headers, x_pct=0.1, scale=1.0, bold=True, padding=0.01)
+                            
+                            for row in report_data["table"].get("rows", []):
+                                row_text = " | ".join(row)
+                                place_and_get_offset(row_text, x_pct=0.1, scale=0.9, padding=0.01)
+                                
+                        self.generate_btn.configure(text="Generate AI Content", state="normal")
+                        tkinter.messagebox.showinfo("Success", "AI Content has been added to your canvas!")
+                    except Exception as e:
+                        self.generate_btn.configure(text="Generate AI Content", state="normal")
+                        tkinter.messagebox.showerror("Error rendering", str(e))
+                
+                self.after(0, append_to_ui)
+    
+            except Exception as e:
+                def show_error():
                     self.generate_btn.configure(text="Generate AI Content", state="normal")
-                    tkinter.messagebox.showinfo("Success", "AI Content has been added to your canvas!")
-                except Exception as e:
-                    self.generate_btn.configure(text="Generate AI Content", state="normal")
-                    tkinter.messagebox.showerror("Error rendering", str(e))
-            
-            self.after(0, append_to_ui)
-
-        except Exception as e:
-            self.after(0, lambda e=e: [
-                self.generate_btn.configure(text="Generate AI Content", state="normal"),
-                tkinter.messagebox.showerror("Error", str(e))
-            ])
+                    tkinter.messagebox.showerror("Error", str(e))
+                self.after(0, show_error)
+                
+        threading.Thread(target=run_generation, daemon=True).start()
             
     def export_pdf_action(self):
         save_path = tkinter.filedialog.asksaveasfilename(
@@ -273,7 +312,10 @@ class GeneratorPage(ctk.CTkFrame):
             "family": self.font_combo.get(),
             "size": int(self.size_combo.get()),
             "color": self.text_color,
+            "custom_path": self.custom_font_path
         }
+        
+        page_format = self.custom_page_format if self.custom_page_format else self.format_combo.get()
         
         self.export_btn.configure(text="Exporting...", state="disabled")
         self.update()
@@ -284,7 +326,7 @@ class GeneratorPage(ctk.CTkFrame):
                 report_data={},
                 canvas_pages=self.calibrator.get_all_pages(),
                 picture_paths=[],
-                page_format=self.format_combo.get(),
+                page_format=page_format,
                 font_settings=font_settings,
             )
             self.export_btn.configure(text="Export PDF →", state="normal")

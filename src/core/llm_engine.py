@@ -2,6 +2,7 @@ import json
 import os
 from openai import OpenAI
 import google.generativeai as genai
+import requests
 
 def test_api_key(provider, key):
     try:
@@ -14,7 +15,6 @@ def test_api_key(provider, key):
             return True, "Success! Connected to OpenAI."
             
         elif provider == "openrouter":
-            import requests
             response = requests.get(
                 "https://openrouter.ai/api/v1/auth/key",
                 headers={"Authorization": f"Bearer {key.strip()}"}

@@ -1,6 +1,8 @@
 import customtkinter as ctk
 import tkinter.messagebox
 from src.core.storage import load_settings, save_settings
+import threading
+from src.core.llm_engine import test_api_key
 
 
 class SettingsPage(ctk.CTkFrame):
@@ -109,9 +111,6 @@ class SettingsPage(ctk.CTkFrame):
         btn.configure(text="Testing...", fg_color="#eab308", hover_color="#ca8a04")
         self.update()
             
-        import threading
-        from src.core.llm_engine import test_api_key
-        
         def run_test():
             success, msg = test_api_key(provider, key_val)
             def update_ui():
